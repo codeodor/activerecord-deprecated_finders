@@ -4,24 +4,26 @@ require 'active_support/deprecation'
 
 module ActiveRecord::Associations::Builder
   class DeprecatedOptionsProc
-    attr_reader :options
+    attr_reader :options, :initial_scope
 
-    def initialize(options)
+    def initialize(options, initial_scope)
       options[:includes]  = options.delete(:include)    if options[:include]
       options[:where]     = options.delete(:conditions) if options[:conditions]
 
+      @initial_scope = initial_scope.respond_to?(:call) ? initial_scope : nil
       @options = options
     end
 
     def to_proc
       options = self.options
+      initial_scope = self.initial_scope
       proc do |owner|
         if options[:where].respond_to?(:to_proc)
           context = owner || self
           where(context.instance_eval(&options[:where]))
-            .merge!(options.except(:where))
+            .merge!(options.except(:where)).merge(initial_scope)
         else
-          merge(options)
+          merge(options).merge(initial_scope)
         end
       end
     end
@@ -38,27 +40,23 @@ module ActiveRecord::Associations::Builder
     self.valid_options += [:select, :conditions, :include, :readonly]
 
     def initialize_with_deprecated_options(model, name, scope, options)
-      if scope.is_a?(Hash)
-        options            = scope
-        deprecated_options = options.slice(*DEPRECATED_OPTIONS)
+      options            = scope if scope.is_a?(Hash)
+      deprecated_options = options.slice(*DEPRECATED_OPTIONS)
 
-        if deprecated_options.empty?
-          scope = nil
-        else
-          ActiveSupport::Deprecation.warn(
-            "The following options in your #{model.name}.#{macro} :#{name} declaration are deprecated: " \
-            "#{deprecated_options.keys.map(&:inspect).join(',')}. Please use a scope block instead. " \
-            "For example, the following:\n" \
-            "\n" \
-            "    has_many :spam_comments, conditions: { spam: true }, class_name: 'Comment'\n" \
-            "\n" \
-            "should be rewritten as the following:\n" \
-            "\n" \
-            "    has_many :spam_comments, -> { where spam: true }, class_name: 'Comment'\n"
-          )
-          scope   = DeprecatedOptionsProc.new(deprecated_options)
-          options = options.except(*DEPRECATED_OPTIONS)
-        end
+      unless deprecated_options.empty?
+        ActiveSupport::Deprecation.warn(
+          "The following options in your #{model.name}.#{macro} :#{name} declaration are deprecated: " \
+          "#{deprecated_options.keys.map(&:inspect).join(',')}. Please use a scope block instead. " \
+          "For example, the following:\n" \
+          "\n" \
+          "    has_many :spam_comments, conditions: { spam: true }, class_name: 'Comment'\n" \
+          "\n" \
+          "should be rewritten as the following:\n" \
+          "\n" \
+          "    has_many :spam_comments, -> { where spam: true }, class_name: 'Comment'\n"
+        )
+        scope   = DeprecatedOptionsProc.new(deprecated_options, scope)
+        options = options.except(*DEPRECATED_OPTIONS)
       end
 
       initialize_without_deprecated_options(model, name, scope, options)

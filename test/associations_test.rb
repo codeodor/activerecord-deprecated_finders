@@ -49,4 +49,13 @@ describe 'associations' do
     scope = @klass.new.comments
     scope.limit_value.must_equal 5
   end
+
+  it "allows a declaration with a scope and deprecated options" do
+    ActiveSupport::Deprecation.silence do
+      @klass.has_many :comments, -> { limit 5 }, :order=>'b'
+    end
+    scope = @klass.new.comments
+    scope.limit_value.must_equal 5
+    scope.order_values.must_equal ['b']
+  end
 end
