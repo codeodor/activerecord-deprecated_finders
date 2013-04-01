@@ -51,7 +51,7 @@ describe 'associations' do
   end
 
   it "allows a declaration with a scope and deprecated options" do
-    ActiveSupport::Deprecation.silence do
+    assert_deprecated do
       @klass.has_many :comments, -> { limit 5 }, :order=>'b'
     end
     scope = @klass.new.comments
